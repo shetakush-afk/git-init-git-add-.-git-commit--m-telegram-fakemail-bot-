@@ -5,11 +5,18 @@ from telegram import Update
 from telegram import InputFile
 from telegram.ext import CallbackContext, CommandHandler, Updater
 
-from legal_dump import LegalSourceError, build_csv_dump, search_cases
+from legal_dump import (
+    LegalSourceError,
+    build_csv_dump,
+    generate_keywords,
+    search_cases,
+)
 
 MAX_SEARCH_RESULTS = 5
 DEFAULT_DUMP_RESULTS = 20
 MAX_DUMP_RESULTS = 100
+DEFAULT_KEYWORD_RESULTS = 12
+MAX_KEYWORD_RESULTS = 30
 
 logging.basicConfig(
     format="%(asctime)s | %(name)s | %(levelname)s | %(message)s",
@@ -22,6 +29,7 @@ def start(update: Update, context: CallbackContext):
     update.message.reply_text(
         "Legal Dump Bot me aapka swagat hai.\n\n"
         "Available commands:\n"
+        "/keywords <topic> [count] - Auto keyword suggestions\n"
         "/search <query> - Top legal results dekhein\n"
         "/dump <query> [limit] - CSV dump file paayen\n"
         "/sources - Data source info"
@@ -31,10 +39,12 @@ def start(update: Update, context: CallbackContext):
 def help_command(update: Update, context: CallbackContext):
     update.message.reply_text(
         "Usage:\n"
+        "/keywords contract 12\n"
         "/search bail\n"
         "/dump contract dispute 30\n\n"
         "Notes:\n"
-        "- limit optional hai (1-100)\n"
+        "- keywords count optional hai (3-30)\n"
+        "- dump limit optional hai (1-100)\n"
         "- Bot public legal records source use karta hai."
     )
 
@@ -47,18 +57,38 @@ def sources(update: Update, context: CallbackContext):
     )
 
 
-def _extract_query_and_limit(args):
+def _extract_query_and_number(args, default_value, max_value, min_value=1):
     if not args:
-        return "", DEFAULT_DUMP_RESULTS
+        return "", default_value
 
-    limit = DEFAULT_DUMP_RESULTS
+    value = default_value
     updated_args = list(args)
     if updated_args and updated_args[-1].isdigit():
-        possible_limit = int(updated_args[-1])
-        limit = max(1, min(possible_limit, MAX_DUMP_RESULTS))
+        possible_value = int(updated_args[-1])
+        value = max(min_value, min(possible_value, max_value))
         updated_args = updated_args[:-1]
 
-    return " ".join(updated_args).strip(), limit
+    return " ".join(updated_args).strip(), value
+
+
+def keywords(update: Update, context: CallbackContext):
+    query, count = _extract_query_and_number(
+        context.args, DEFAULT_KEYWORD_RESULTS, MAX_KEYWORD_RESULTS, min_value=3
+    )
+    if not query:
+        update.message.reply_text("Usage: /keywords <topic> [count]")
+        return
+
+    generated = generate_keywords(query, limit=count)
+    if not generated:
+        update.message.reply_text("Keywords generate nahi ho paaye. Query change karke try karein.")
+        return
+
+    lines = [f"Auto keywords for: {query}\n"]
+    for index, keyword in enumerate(generated, start=1):
+        lines.append(f"{index}. {keyword}")
+    lines.append("\nTip: /search <keyword> ya /dump <keyword> 20 use karein.")
+    update.message.reply_text("\n".join(lines))
 
 
 def search(update: Update, context: CallbackContext):
@@ -91,7 +121,9 @@ def search(update: Update, context: CallbackContext):
 
 
 def dump(update: Update, context: CallbackContext):
-    query, limit = _extract_query_and_limit(context.args)
+    query, limit = _extract_query_and_number(
+        context.args, DEFAULT_DUMP_RESULTS, MAX_DUMP_RESULTS
+    )
     if not query:
         update.message.reply_text("Usage: /dump <query> [limit]")
         return
@@ -137,6 +169,7 @@ def main():
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CommandHandler("help", help_command))
     dp.add_handler(CommandHandler("sources", sources))
+    dp.add_handler(CommandHandler("keywords", keywords))
     dp.add_handler(CommandHandler("search", search))
     dp.add_handler(CommandHandler("dump", dump))
     dp.add_error_handler(on_error)

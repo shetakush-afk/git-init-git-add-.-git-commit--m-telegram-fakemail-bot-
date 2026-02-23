@@ -4,6 +4,7 @@ Telegram bot that searches public legal records and exports result dumps as CSV.
 
 ## Features
 
+- `/keywords <topic> [count]`: auto-generate legal search keywords
 - `/search <query>`: returns top legal case matches
 - `/dump <query> [limit]`: generates CSV dump file for the query
 - `/sources`: shows source information
@@ -35,4 +36,5 @@ python bot.py
 ## Notes
 
 - This bot works on public legal data indexes.
+- `count` for `/keywords` is clamped between 3 and 30.
 - `limit` for `/dump` is clamped between 1 and 100.
